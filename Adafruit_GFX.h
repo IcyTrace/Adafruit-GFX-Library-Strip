@@ -1,21 +1,15 @@
 #ifndef _ADAFRUIT_GFX_H
 #define _ADAFRUIT_GFX_H
 
-#if ARDUINO >= 100
-#include "Arduino.h"
-#include "Print.h"
-#else
-#include "WProgram.h"
-#endif
-#include "gfxfont.h"
+#include <cstdint>
+#include <cstring>
 
-#include <Adafruit_I2CDevice.h>
-#include <Adafruit_SPIDevice.h>
+#include "gfxfont.h"
 
 /// A generic graphics superclass that can handle all sorts of drawing. At a
 /// minimum you can subclass and provide drawPixel(). At a maximum you can do a
 /// ton of overriding to optimize. Used for any/all Adafruit displays!
-class Adafruit_GFX : public Print {
+class Adafruit_GFX {
 
 public:
   Adafruit_GFX(int16_t w, int16_t h); // Constructor
@@ -113,10 +107,6 @@ public:
                 uint16_t bg, uint8_t size_x, uint8_t size_y);
   void getTextBounds(const char *string, int16_t x, int16_t y, int16_t *x1,
                      int16_t *y1, uint16_t *w, uint16_t *h);
-  void getTextBounds(const __FlashStringHelper *s, int16_t x, int16_t y,
-                     int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h);
-  void getTextBounds(const String &str, int16_t x, int16_t y, int16_t *x1,
-                     int16_t *y1, uint16_t *w, uint16_t *h);
   void setTextSize(uint8_t s);
   void setTextSize(uint8_t sx, uint8_t sy);
   void setFont(const GFXfont *f = NULL);
@@ -180,12 +170,21 @@ public:
   /**********************************************************************/
   void cp437(bool x = true) { _cp437 = x; }
 
-  using Print::write;
-#if ARDUINO >= 100
-  virtual size_t write(uint8_t);
-#else
-  virtual void write(uint8_t);
-#endif
+  size_t write(uint8_t c); 
+
+  // "Print" class functions
+  size_t write(const uint8_t *buffer, size_t size)
+  {
+    size_t n = 0;
+    while (size--) {
+      if (write(*buffer++)) n++;
+      else break;
+    }
+    return n;
+  }
+  size_t write(const char *buffer, size_t size) { return write((const uint8_t *)buffer, size); }
+  size_t write(const char *str) { return (str == NULL) ? 0 : write((const uint8_t *)str, strlen(str)); }
+  size_t print(const char str[]) { return write(str); }
 
   /************************************************************************/
   /*!
@@ -333,10 +332,6 @@ protected:
                      ///< nothing
 
 private:
-#ifdef __AVR__
-  // Bitmask tables of 0x80>>X and ~(0x80>>X), because X>>Y is slow on AVR
-  static const uint8_t PROGMEM GFXsetBit[], GFXclrBit[];
-#endif
 };
 
 /// A GFX 8-bit canvas context for graphics

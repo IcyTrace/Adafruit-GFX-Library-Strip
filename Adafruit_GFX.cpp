@@ -31,13 +31,10 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <cstring>
+
 #include "Adafruit_GFX.h"
 #include "glcdfont.c"
-#ifdef __AVR__
-#include <avr/pgmspace.h>
-#elif defined(ESP8266) || defined(ESP32)
-#include <pgmspace.h>
-#endif
 
 // Many (but maybe not all) non-AVR board installs define macros
 // for compatibility with existing PROGMEM-reading AVR code.
@@ -63,27 +60,11 @@ POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 inline GFXglyph *pgm_read_glyph_ptr(const GFXfont *gfxFont, uint8_t c) {
-#ifdef __AVR__
-  return &(((GFXglyph *)pgm_read_pointer(&gfxFont->glyph))[c]);
-#else
-  // expression in __AVR__ section may generate "dereferencing type-punned
-  // pointer will break strict-aliasing rules" warning In fact, on other
-  // platforms (such as STM32) there is no need to do this pointer magic as
-  // program memory may be read in a usual way So expression may be simplified
   return gfxFont->glyph + c;
-#endif //__AVR__
 }
 
 inline uint8_t *pgm_read_bitmap_ptr(const GFXfont *gfxFont) {
-#ifdef __AVR__
-  return (uint8_t *)pgm_read_pointer(&gfxFont->bitmap);
-#else
-  // expression in __AVR__ section generates "dereferencing type-punned pointer
-  // will break strict-aliasing rules" warning In fact, on other platforms (such
-  // as STM32) there is no need to do this pointer magic as program memory may
-  // be read in a usual way So expression may be simplified
   return gfxFont->bitmap;
-#endif //__AVR__
 }
 
 #ifndef min
@@ -1475,64 +1456,6 @@ void Adafruit_GFX::getTextBounds(const char *str, int16_t x, int16_t y,
 
 /**************************************************************************/
 /*!
-    @brief    Helper to determine size of a string with current font/size. Pass
-   string and a cursor position, returns UL corner and W,H.
-    @param    str    The ascii string to measure (as an arduino String() class)
-    @param    x      The current cursor X
-    @param    y      The current cursor Y
-    @param    x1     The boundary X coordinate, set by function
-    @param    y1     The boundary Y coordinate, set by function
-    @param    w      The boundary width, set by function
-    @param    h      The boundary height, set by function
-*/
-/**************************************************************************/
-void Adafruit_GFX::getTextBounds(const String &str, int16_t x, int16_t y,
-                                 int16_t *x1, int16_t *y1, uint16_t *w,
-                                 uint16_t *h) {
-  if (str.length() != 0) {
-    getTextBounds(const_cast<char *>(str.c_str()), x, y, x1, y1, w, h);
-  }
-}
-
-/**************************************************************************/
-/*!
-    @brief    Helper to determine size of a PROGMEM string with current
-   font/size. Pass string and a cursor position, returns UL corner and W,H.
-    @param    str     The flash-memory ascii string to measure
-    @param    x       The current cursor X
-    @param    y       The current cursor Y
-    @param    x1      The boundary X coordinate, set by function
-    @param    y1      The boundary Y coordinate, set by function
-    @param    w      The boundary width, set by function
-    @param    h      The boundary height, set by function
-*/
-/**************************************************************************/
-void Adafruit_GFX::getTextBounds(const __FlashStringHelper *str, int16_t x,
-                                 int16_t y, int16_t *x1, int16_t *y1,
-                                 uint16_t *w, uint16_t *h) {
-  uint8_t *s = (uint8_t *)str, c;
-
-  *x1 = x;
-  *y1 = y;
-  *w = *h = 0;
-
-  int16_t minx = _width, miny = _height, maxx = -1, maxy = -1;
-
-  while ((c = pgm_read_byte(s++)))
-    charBounds(c, &x, &y, &minx, &miny, &maxx, &maxy);
-
-  if (maxx >= minx) {
-    *x1 = minx;
-    *w = maxx - minx + 1;
-  }
-  if (maxy >= miny) {
-    *y1 = miny;
-    *h = maxy - miny + 1;
-  }
-}
-
-/**************************************************************************/
-/*!
     @brief      Invert the display (ideally using built-in hardware command)
     @param   i  True if you want to invert, false to make 'normal'
 */
@@ -1745,13 +1668,6 @@ bool Adafruit_GFX_Button::justReleased() { return (!currstate && laststate); }
 // scanline pad).
 // NOT EXTENSIVELY TESTED YET.  MAY CONTAIN WORST BUGS KNOWN TO HUMANKIND.
 
-#ifdef __AVR__
-// Bitmask tables of 0x80>>X and ~(0x80>>X), because X>>Y is slow on AVR
-const uint8_t PROGMEM GFXcanvas1::GFXsetBit[] = {0x80, 0x40, 0x20, 0x10,
-                                                 0x08, 0x04, 0x02, 0x01};
-const uint8_t PROGMEM GFXcanvas1::GFXclrBit[] = {0x7F, 0xBF, 0xDF, 0xEF,
-                                                 0xF7, 0xFB, 0xFD, 0xFE};
-#endif
 
 /**************************************************************************/
 /*!
@@ -1818,17 +1734,10 @@ void GFXcanvas1::drawPixel(int16_t x, int16_t y, uint16_t color) {
     }
 
     uint8_t *ptr = &buffer[(x / 8) + y * ((WIDTH + 7) / 8)];
-#ifdef __AVR__
-    if (color)
-      *ptr |= pgm_read_byte(&GFXsetBit[x & 7]);
-    else
-      *ptr &= pgm_read_byte(&GFXclrBit[x & 7]);
-#else
     if (color)
       *ptr |= 0x80 >> (x & 7);
     else
       *ptr &= ~(0x80 >> (x & 7));
-#endif
   }
 }
 
@@ -1879,11 +1788,7 @@ bool GFXcanvas1::getRawPixel(int16_t x, int16_t y) const {
   if (buffer) {
     uint8_t *ptr = &buffer[(x / 8) + y * ((WIDTH + 7) / 8)];
 
-#ifdef __AVR__
-    return ((*ptr) & pgm_read_byte(&GFXsetBit[x & 7])) != 0;
-#else
     return ((*ptr) & (0x80 >> (x & 7))) != 0;
-#endif
   }
   return 0;
 }
@@ -2028,21 +1933,13 @@ void GFXcanvas1::drawFastRawVLine(int16_t x, int16_t y, int16_t h,
   uint8_t *ptr = &buffer[(x / 8) + y * row_bytes];
 
   if (color > 0) {
-#ifdef __AVR__
-    uint8_t bit_mask = pgm_read_byte(&GFXsetBit[x & 7]);
-#else
     uint8_t bit_mask = (0x80 >> (x & 7));
-#endif
     for (int16_t i = 0; i < h; i++) {
       *ptr |= bit_mask;
       ptr += row_bytes;
     }
   } else {
-#ifdef __AVR__
-    uint8_t bit_mask = pgm_read_byte(&GFXclrBit[x & 7]);
-#else
     uint8_t bit_mask = ~(0x80 >> (x & 7));
-#endif
     for (int16_t i = 0; i < h; i++) {
       *ptr &= bit_mask;
       ptr += row_bytes;
@@ -2071,11 +1968,7 @@ void GFXcanvas1::drawFastRawHLine(int16_t x, int16_t y, int16_t w,
     // create bit mask for first byte
     uint8_t startByteBitMask = 0x00;
     for (int8_t i = (x & 7); ((i < 8) && (remainingWidthBits > 0)); i++) {
-#ifdef __AVR__
-      startByteBitMask |= pgm_read_byte(&GFXsetBit[i]);
-#else
       startByteBitMask |= (0x80 >> i);
-#endif
       remainingWidthBits--;
     }
     if (color > 0) {
@@ -2098,11 +1991,7 @@ void GFXcanvas1::drawFastRawHLine(int16_t x, int16_t y, int16_t w,
     if (lastByteBits > 0) {
       uint8_t lastByteBitMask = 0x00;
       for (size_t i = 0; i < lastByteBits; i++) {
-#ifdef __AVR__
-        lastByteBitMask |= pgm_read_byte(&GFXsetBit[i]);
-#else
         lastByteBitMask |= (0x80 >> i);
-#endif
       }
       ptr += remainingWholeBytes;
 
